@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/mushtruk/webcrawler/crawler"
@@ -23,6 +25,19 @@ func newTestServer() *httptest.Server {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, content)
+	})
+	return httptest.NewServer(handler)
+}
+
+func newDepthTestServer() *httptest.Server {
+	handler := http.NewServeMux()
+	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		depth, _ := strconv.Atoi(r.URL.Query().Get("depth"))
+		if depth <= 3 { // Example depth limit for the mock server
+			fmt.Fprintf(w, `<a href="/page?depth=%d">Next Page</a>`, depth+1)
+		} else {
+			fmt.Fprint(w, "No more links")
+		}
 	})
 	return httptest.NewServer(handler)
 }
@@ -51,4 +66,30 @@ func TestCrawlerStart(t *testing.T) {
 		t.Error("Start URL should be marked as visited after crawling")
 	}
 
+}
+
+func TestCrawlerDepthControl(t *testing.T) {
+	server := newDepthTestServer()
+	defer server.Close()
+
+	maxDepth := 2
+	startURL, _ := crawler.NewCrawlURL(server.URL+"/?depth=1", 1)
+	q := queue.NewQueue[*crawler.CrawlURL]()
+	q.Add(startURL)
+	c := crawler.NewCrawler(q, maxDepth)
+
+	c.Start()
+
+	for visitedURL := range c.Visited {
+		parsedURL, err := url.Parse(visitedURL)
+		if err != nil {
+			t.Errorf("Failed to parse URL: %s, error: %v", visitedURL, err)
+			continue
+		}
+
+		depth, _ := strconv.Atoi(parsedURL.Query().Get("depth"))
+		if depth > maxDepth {
+			t.Errorf("Crawler exceeded max depth for URL: %s", visitedURL)
+		}
+	}
 }
