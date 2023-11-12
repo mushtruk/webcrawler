@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/mushtruk/webcrawler/crawler"
@@ -55,7 +56,13 @@ func TestCrawlerStart(t *testing.T) {
 	crawler := crawler.NewCrawler(q, 3)
 
 	// Start the crawler
-	crawler.Start()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		crawler.Start()
+	}()
+	wg.Wait()
 
 	// Verify the crawler has processed the URL and added new URLs to the queue
 	if !q.IsEmpty() {
@@ -72,7 +79,7 @@ func TestCrawlerDepthControl(t *testing.T) {
 	server := newDepthTestServer()
 	defer server.Close()
 
-	maxDepth := 2
+	maxDepth := 3
 	startURL, _ := crawler.NewCrawlURL(server.URL+"/?depth=1", 1)
 	q := queue.NewQueue[*crawler.CrawlURL]()
 	q.Add(startURL)

@@ -30,6 +30,10 @@ func NewCrawlURL(rawURL string, depth int) (*CrawlURL, error) {
 	}, nil
 }
 
+func (c *CrawlURL) Key() string {
+	return c.RawURL
+}
+
 // GetDepth returns the depth of the URL.
 func (c *CrawlURL) GetDepth() int {
 	return c.Depth
@@ -40,6 +44,11 @@ func (c *CrawlURL) SetDepth(depth int) {
 	c.Depth = depth
 }
 
-func (c *CrawlURL) Key() string {
-	return c.RawURL
+func (c *Crawler) MarkVisited(url string) {
+	c.Visited[url] = true
+}
+
+func (c *Crawler) IsVisited(url string) bool {
+	_, visited := c.Visited[url]
+	return visited
 }

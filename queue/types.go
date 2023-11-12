@@ -1,5 +1,7 @@
 package queue
 
+import "sync"
+
 // KeyProvider defines an interface for items that can provide a key.
 type KeyProvider interface {
 	Key() string
@@ -9,6 +11,7 @@ type KeyProvider interface {
 type Queue[T KeyProvider] struct {
 	items   []T
 	visited map[string]bool
+	mu      sync.Mutex
 }
 
 // NewQueue creates a new Queue instance.
