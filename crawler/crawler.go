@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"log"
 	"sync"
 
 	"github.com/mushtruk/webcrawler/fetcher"
@@ -23,61 +24,90 @@ func NewCrawler(q *queue.Queue[*CrawlURL], maxDepth int) *Crawler {
 	}
 }
 
-func (c *Crawler) Start() {
+func (c *Crawler) Start(workerCount int) {
 	var wg sync.WaitGroup
+	wg.Add(workerCount) // Add for the number of workers
 
-	for {
-		c.mutex.Lock()
-		if c.Queue.IsEmpty() {
-			c.mutex.Unlock()
-			break
-		}
-		crawlItem, ok := c.Queue.Next()
-		c.mutex.Unlock()
-
-		if !ok {
-			continue
-		}
-
-		wg.Add(1)
-		go func(ci *CrawlURL) {
+	// Start a fixed number of worker goroutines
+	for i := 0; i < workerCount; i++ {
+		go func() {
 			defer wg.Done()
+			for {
+				c.mutex.Lock()
+				if c.Queue.IsEmpty() {
+					c.mutex.Unlock()
+					return // No more URLs, exit the goroutine
+				}
 
-			url := ci.ParsedURL.String()
-
-			// Synchronized check for visited URLs and depth
-			c.mutex.Lock()
-			if c.IsVisited(url) || ci.Depth > c.MaxDepth {
+				crawlItem, ok := c.Queue.Next()
 				c.mutex.Unlock()
-				return
-			}
-			c.MarkVisited(url)
-			c.mutex.Unlock()
 
-			// Fetch and parse the URL's content
-			content, err := fetcher.FetchUrl(url)
-			if err != nil {
-				// Handle error
-				return
-			}
-
-			newUrls, err := parser.ParseContent(content, url)
-			if err != nil {
-				// Handle error
-				return
-			}
-
-			// Synchronized add to queue
-			c.mutex.Lock()
-			for _, newUrl := range newUrls {
-				newCrawlURL, err := NewCrawlURL(newUrl, ci.Depth+1)
-				if err == nil && !c.IsVisited(newCrawlURL.RawURL) && newCrawlURL.Depth <= c.MaxDepth {
-					c.Queue.Add(newCrawlURL)
+				if ok {
+					c.processURL(crawlItem)
 				}
 			}
-			c.mutex.Unlock()
-		}(crawlItem)
+		}()
 	}
 
-	wg.Wait()
+	wg.Wait() // Wait for all workers to finish
+}
+
+func (c *Crawler) noMoreURLsToProcess() bool {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.Queue.IsEmpty()
+}
+
+func (c *Crawler) getNextURLToCrawl() (*CrawlURL, bool) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.Queue.Next()
+}
+
+func (c *Crawler) processURL(ci *CrawlURL) {
+
+	url := ci.ParsedURL.String()
+
+	if c.shouldSkipURL(url, ci.Depth) {
+		return
+	}
+
+	content, err := fetcher.FetchUrl(url)
+	if err != nil {
+		log.Printf("Error fetching URL %s: %v", url, err)
+		return
+	}
+
+	newUrls, err := parser.ParseContent(content, url)
+
+	if err != nil {
+		log.Printf("Error parsing content from %s: %v", url, err)
+		return
+	}
+
+	c.addNewURLsToQueue(newUrls, ci.Depth)
+}
+
+func (c *Crawler) shouldSkipURL(url string, depth int) bool {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if c.IsVisited(url) || depth > c.MaxDepth {
+		return true
+	}
+	c.MarkVisited(url)
+	return false
+}
+
+func (c *Crawler) addNewURLsToQueue(newUrls []string, currentDepth int) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	for _, newUrl := range newUrls {
+		newCrawlURL, err := NewCrawlURL(newUrl, currentDepth+1)
+
+		if err == nil && !c.IsVisited(newCrawlURL.RawURL) && newCrawlURL.Depth <= c.MaxDepth {
+			c.Queue.Add(newCrawlURL)
+		}
+	}
 }

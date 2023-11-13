@@ -2,10 +2,12 @@ package crawler_test
 
 import (
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -13,40 +15,37 @@ import (
 	"github.com/mushtruk/webcrawler/queue"
 )
 
-const content = `<html>
-<head><title>Test Page</title></head>
-<body>
-    <a href="/link1">Link 1</a>
-    <a href="/link2">Link 2</a>
-</body>
-</html>`
-
-// startTestServer returns a new mock HTTP server that responds with a simple HTML page containing links.
-func newTestServer() *httptest.Server {
-	handler := http.NewServeMux()
-	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, content)
-	})
-	return httptest.NewServer(handler)
+func randInRange(min, max int) int {
+	return rand.Intn(max-min) + min
 }
 
-func newDepthTestServer() *httptest.Server {
-	handler := http.NewServeMux()
-	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		depth, _ := strconv.Atoi(r.URL.Query().Get("depth"))
-		if depth <= 3 { // Example depth limit for the mock server
-			fmt.Fprintf(w, `<a href="/page?depth=%d">Next Page</a>`, depth+1)
-		} else {
-			fmt.Fprint(w, "No more links")
+func newMockServer(maxDepth int) *httptest.Server {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		depth := strings.Count(r.URL.Path, "/link")
+		// Start HTML content
+		fmt.Fprint(w, "<html><body>")
+
+		if depth < maxDepth {
+			for i := 1; i < randInRange(2, 15); i++ {
+				// Construct the URL for the next depth
+				hostWithPort := r.Host // This includes the host and port
+				nextDepthURL := fmt.Sprintf("http://%s%s/link%v", hostWithPort, strings.TrimSuffix(r.URL.Path, "/"), i)
+
+				fmt.Fprintf(w, `<a href="%s">Link at depth %d</a><br>`, nextDepthURL, depth+1)
+			}
 		}
-	})
-	return httptest.NewServer(handler)
+
+		// End HTML content
+		fmt.Fprint(w, "</body></html>")
+	}))
+
+	return server
 }
 
 // TestCrawlerStart tests the basic functionality of the Crawler's Start method.
 func TestCrawlerStart(t *testing.T) {
 	// Set up a mock server with a simple HTML response
-	server := newTestServer()
+	server := newMockServer(10)
 	defer server.Close()
 
 	// Create a new crawler with the mock server's URL
@@ -60,7 +59,7 @@ func TestCrawlerStart(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		crawler.Start()
+		crawler.Start(10)
 	}()
 	wg.Wait()
 
@@ -76,16 +75,17 @@ func TestCrawlerStart(t *testing.T) {
 }
 
 func TestCrawlerDepthControl(t *testing.T) {
-	server := newDepthTestServer()
+	maxDepth := 3
+
+	server := newMockServer(maxDepth)
 	defer server.Close()
 
-	maxDepth := 3
-	startURL, _ := crawler.NewCrawlURL(server.URL+"/?depth=1", 1)
+	startURL, _ := crawler.NewCrawlURL(server.URL, 0)
 	q := queue.NewQueue[*crawler.CrawlURL]()
 	q.Add(startURL)
 	c := crawler.NewCrawler(q, maxDepth)
 
-	c.Start()
+	c.Start(10)
 
 	for visitedURL := range c.Visited {
 		parsedURL, err := url.Parse(visitedURL)
@@ -98,5 +98,25 @@ func TestCrawlerDepthControl(t *testing.T) {
 		if depth > maxDepth {
 			t.Errorf("Crawler exceeded max depth for URL: %s", visitedURL)
 		}
+	}
+}
+
+func TestCrawlerHighVolumeURLs(t *testing.T) {
+	maxDepth := 5
+
+	server := newMockServer(maxDepth)
+	defer server.Close()
+
+	q := queue.NewQueue[*crawler.CrawlURL]()
+
+	crawlUrl, _ := crawler.NewCrawlURL(server.URL, 0)
+	q.Add(crawlUrl)
+
+	c := crawler.NewCrawler(q, maxDepth)
+
+	c.Start(1000)
+
+	if !q.IsEmpty() {
+		t.Errorf("Queue should be empty after crawling")
 	}
 }
