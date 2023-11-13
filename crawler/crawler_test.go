@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mushtruk/webcrawler/crawler"
 	"github.com/mushtruk/webcrawler/queue"
@@ -20,7 +21,7 @@ func randInRange(min, max int) int {
 }
 
 func newMockServer(maxDepth int) *httptest.Server {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		depth := strings.Count(r.URL.Path, "/link")
 		// Start HTML content
 		fmt.Fprint(w, "<html><body>")
@@ -38,8 +39,13 @@ func newMockServer(maxDepth int) *httptest.Server {
 		// End HTML content
 		fmt.Fprint(w, "</body></html>")
 	}))
+}
 
-	return server
+func newSlowURLMockServer(timeout time.Duration) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(timeout)
+		w.WriteHeader(http.StatusOK)
+	}))
 }
 
 // TestCrawlerStart tests the basic functionality of the Crawler's Start method.
@@ -52,7 +58,7 @@ func TestCrawlerStart(t *testing.T) {
 	startURL, _ := crawler.NewCrawlURL(server.URL, 3)
 	q := queue.NewQueue[*crawler.CrawlURL]()
 	q.Add(startURL)
-	crawler := crawler.NewCrawler(q, 3)
+	crawler := crawler.NewCrawler(q, 3, 0)
 
 	// Start the crawler
 	var wg sync.WaitGroup
@@ -83,7 +89,7 @@ func TestCrawlerDepthControl(t *testing.T) {
 	startURL, _ := crawler.NewCrawlURL(server.URL, 0)
 	q := queue.NewQueue[*crawler.CrawlURL]()
 	q.Add(startURL)
-	c := crawler.NewCrawler(q, maxDepth)
+	c := crawler.NewCrawler(q, maxDepth, 0)
 
 	c.Start(10)
 
@@ -112,11 +118,29 @@ func TestCrawlerHighVolumeURLs(t *testing.T) {
 	crawlUrl, _ := crawler.NewCrawlURL(server.URL, 0)
 	q.Add(crawlUrl)
 
-	c := crawler.NewCrawler(q, maxDepth)
+	c := crawler.NewCrawler(q, maxDepth, 0)
 
-	c.Start(1000)
+	c.Start(10)
 
 	if !q.IsEmpty() {
 		t.Errorf("Queue should be empty after crawling")
+	}
+}
+
+func TestURLResonseTimeout(t *testing.T) {
+	timeout := time.Duration(1 * time.Second)
+	server := newSlowURLMockServer(timeout)
+	defer server.Close()
+
+	c := crawler.NewCrawler(queue.NewQueue[*crawler.CrawlURL](), 3, timeout)
+
+	crawlUrl, _ := crawler.NewCrawlURL(server.URL, 0)
+
+	c.Queue.Add(crawlUrl)
+
+	c.Start(1)
+
+	if !c.TimeoutTracker.HasTimeout(crawlUrl.RawURL) {
+		t.Errorf("Expected a timeout for URL %s, but none occurred", crawlUrl.RawURL)
 	}
 }

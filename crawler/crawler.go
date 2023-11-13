@@ -1,26 +1,34 @@
 package crawler
 
 import (
+	"io"
 	"log"
+	"net/http"
+	"os"
 	"sync"
+	"time"
 
-	"github.com/mushtruk/webcrawler/fetcher"
 	"github.com/mushtruk/webcrawler/parser"
 	"github.com/mushtruk/webcrawler/queue"
+	"github.com/mushtruk/webcrawler/timeouttracker"
 )
 
 type Crawler struct {
-	Queue    *queue.Queue[*CrawlURL]
-	Visited  map[string]bool
-	MaxDepth int
-	mutex    sync.Mutex
+	Queue          *queue.Queue[*CrawlURL]
+	Visited        map[string]bool
+	MaxDepth       int
+	TimeOut        time.Duration
+	TimeoutTracker timeouttracker.TimeoutTracker
+	mutex          sync.Mutex
 }
 
-func NewCrawler(q *queue.Queue[*CrawlURL], maxDepth int) *Crawler {
+func NewCrawler(q *queue.Queue[*CrawlURL], maxDepth int, timeout time.Duration) *Crawler {
 	return &Crawler{
-		Queue:    q,
-		Visited:  make(map[string]bool),
-		MaxDepth: maxDepth,
+		Queue:          q,
+		Visited:        make(map[string]bool),
+		MaxDepth:       maxDepth,
+		TimeOut:        timeout,
+		TimeoutTracker: *timeouttracker.NewTimeoutTracker(),
 	}
 }
 
@@ -72,7 +80,7 @@ func (c *Crawler) processURL(ci *CrawlURL) {
 		return
 	}
 
-	content, err := fetcher.FetchUrl(url)
+	content, err := c.FetchUrl(url)
 	if err != nil {
 		log.Printf("Error fetching URL %s: %v", url, err)
 		return
@@ -110,4 +118,31 @@ func (c *Crawler) addNewURLsToQueue(newUrls []string, currentDepth int) {
 			c.Queue.Add(newCrawlURL)
 		}
 	}
+}
+
+func (c *Crawler) FetchUrl(url string) (body string, err error) {
+	// Fetch the webpage
+	client := http.Client{
+		Timeout: time.Duration(c.TimeOut),
+	}
+
+	resp, err := client.Get(url)
+	if err != nil {
+		if os.IsTimeout(err) {
+			c.TimeoutTracker.Add(url)
+		}
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	// Read and convert the body to string
+	bodyBytes, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		return "", err
+	}
+
+	content := string(bodyBytes)
+
+	return content, nil
 }
