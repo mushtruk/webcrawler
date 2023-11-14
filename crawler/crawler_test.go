@@ -50,7 +50,8 @@ func newSlowURLMockServer(timeout time.Duration) *httptest.Server {
 
 // TestCrawlerStart tests the basic functionality of the Crawler's Start method.
 func TestCrawlerStart(t *testing.T) {
-	// Set up a mock server with a simple HTML response
+	timeout := time.Duration(5 * time.Second)
+
 	server := newMockServer(10)
 	defer server.Close()
 
@@ -58,7 +59,7 @@ func TestCrawlerStart(t *testing.T) {
 	startURL, _ := crawler.NewCrawlURL(server.URL, 3)
 	q := queue.NewQueue[*crawler.CrawlURL]()
 	q.Add(startURL)
-	crawler := crawler.NewCrawler(q, 3, 0)
+	crawler := crawler.NewCrawler(q, 3, timeout)
 
 	// Start the crawler
 	var wg sync.WaitGroup
@@ -82,6 +83,7 @@ func TestCrawlerStart(t *testing.T) {
 
 func TestCrawlerDepthControl(t *testing.T) {
 	maxDepth := 3
+	timeout := time.Duration(5 * time.Second)
 
 	server := newMockServer(maxDepth)
 	defer server.Close()
@@ -89,7 +91,7 @@ func TestCrawlerDepthControl(t *testing.T) {
 	startURL, _ := crawler.NewCrawlURL(server.URL, 0)
 	q := queue.NewQueue[*crawler.CrawlURL]()
 	q.Add(startURL)
-	c := crawler.NewCrawler(q, maxDepth, 0)
+	c := crawler.NewCrawler(q, maxDepth, timeout)
 
 	c.Start(10)
 
@@ -108,6 +110,8 @@ func TestCrawlerDepthControl(t *testing.T) {
 }
 
 func TestCrawlerHighVolumeURLs(t *testing.T) {
+	timeout := time.Duration(5 * time.Second)
+
 	maxDepth := 5
 
 	server := newMockServer(maxDepth)
@@ -118,7 +122,7 @@ func TestCrawlerHighVolumeURLs(t *testing.T) {
 	crawlUrl, _ := crawler.NewCrawlURL(server.URL, 0)
 	q.Add(crawlUrl)
 
-	c := crawler.NewCrawler(q, maxDepth, 0)
+	c := crawler.NewCrawler(q, maxDepth, timeout)
 
 	c.Start(10)
 
@@ -142,5 +146,30 @@ func TestURLResonseTimeout(t *testing.T) {
 
 	if !c.TimeoutTracker.HasTimeout(crawlUrl.RawURL) {
 		t.Errorf("Expected a timeout for URL %s, but none occurred", crawlUrl.RawURL)
+	}
+}
+
+func TestCrawlerCaching(t *testing.T) {
+	timeout := time.Duration(5 * time.Second)
+
+	server := newMockServer(1)
+	defer server.Close()
+
+	initialUrl, _ := crawler.NewCrawlURL(server.URL, 1)
+	q := queue.NewQueue[*crawler.CrawlURL]()
+	q.Add(initialUrl)
+
+	c := crawler.NewCrawler(q, 2, timeout)
+
+	c.Queue.Add(initialUrl)
+	c.Start(1)
+
+	// Crawl the same URL again
+	c.Queue.Add(initialUrl)
+	c.Start(1)
+
+	// Check if the cache was used for the second request
+	if _, found := c.Cache.Get(initialUrl.RawURL); !found {
+		t.Errorf("Cache was not used for URL: %s", server.URL)
 	}
 }
