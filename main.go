@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/mushtruk/webcrawler/crawler"
 	"github.com/mushtruk/webcrawler/queue"
@@ -17,9 +18,9 @@ func main() {
 
 	q.Add(u)
 
-	c := crawler.NewCrawler(q, 2)
+	c := crawler.NewCrawler(q, 2, 5*time.Second)
 
-	c.Start()
+	c.Start(1)
 
 	fmt.Print(c.Visited)
 }
