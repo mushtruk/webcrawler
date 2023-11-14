@@ -3,11 +3,12 @@ package queue
 func (q *Queue[T]) Add(item T) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
 	key := item.Key()
 
-	if !q.visited[key] {
+	if _, visited := q.visited[key]; !visited {
+		q.visited[key] = struct{}{}
 		q.items = append(q.items, item)
-		q.visited[key] = true
 	}
 }
 
