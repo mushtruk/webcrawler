@@ -11,7 +11,9 @@ import (
 	"github.com/mushtruk/webcrawler/cache"
 	"github.com/mushtruk/webcrawler/parser"
 	"github.com/mushtruk/webcrawler/queue"
+	"github.com/mushtruk/webcrawler/storage"
 	"github.com/mushtruk/webcrawler/timeouttracker"
+	"github.com/mushtruk/webcrawler/treesitemap"
 )
 
 type Crawler struct {
@@ -21,17 +23,21 @@ type Crawler struct {
 	TimeOut        time.Duration
 	TimeoutTracker timeouttracker.TimeoutTracker
 	Cache          cache.Cache
+	Storage        storage.StorageHandler
+	RootNode       *treesitemap.TreeNode
 	mutex          sync.Mutex
 }
 
-func NewCrawler(q *queue.Queue[*CrawlURL], maxDepth int, timeout time.Duration) *Crawler {
+func NewCrawler(q *queue.Queue[*CrawlURL], storage storage.StorageHandler, maxDepth int, timeout time.Duration) *Crawler {
 	return &Crawler{
 		Queue:          q,
 		Visited:        make(map[string]bool),
-		MaxDepth:       maxDepth,
 		Cache:          *cache.NewCache(),
-		TimeOut:        timeout,
+		RootNode:       &treesitemap.TreeNode{},
 		TimeoutTracker: *timeouttracker.NewTimeoutTracker(),
+		MaxDepth:       maxDepth,
+		Storage:        storage,
+		TimeOut:        timeout,
 	}
 }
 
@@ -61,6 +67,8 @@ func (c *Crawler) Start(workerCount int) {
 	}
 
 	wg.Wait() // Wait for all workers to finish
+
+	c.Storage.Handle(c.RootNode)
 }
 
 func (c *Crawler) noMoreURLsToProcess() bool {
@@ -98,6 +106,15 @@ func (c *Crawler) processURL(ci *CrawlURL) {
 	}
 
 	c.addNewURLsToQueue(newUrls, ci.Depth)
+
+	if c.RootNode == nil {
+		log.Println("RootNode is nil")
+		return
+	}
+
+	node := &treesitemap.TreeNode{URL: url, Content: newUrls}
+
+	c.RootNode.AddChild(node)
 }
 
 func (c *Crawler) shouldSkipURL(url string, depth int) bool {

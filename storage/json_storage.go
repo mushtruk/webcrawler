@@ -6,21 +6,30 @@ import (
 )
 
 type JsonStorage struct {
-	Filename string
+	Filename    string
+	PrettyPrint bool
 }
 
-func NewJSONStorage(filename string) *JsonStorage {
+func NewJSONStorage(filename string, pretty bool) *JsonStorage {
 	return &JsonStorage{
-		Filename: filename,
+		Filename:    filename,
+		PrettyPrint: pretty,
 	}
 }
 
 func (s *JsonStorage) Handle(data interface{}) error {
-	json, err := json.Marshal(data)
+	var jsonData []byte
+	var err error
+
+	if s.PrettyPrint {
+		jsonData, err = json.MarshalIndent(data, "", " ")
+	} else {
+		jsonData, err = json.Marshal(data)
+	}
 
 	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(s.Filename, json, 0644)
+	return os.WriteFile(s.Filename, jsonData, 0644)
 }

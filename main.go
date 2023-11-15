@@ -6,11 +6,12 @@ import (
 
 	"github.com/mushtruk/webcrawler/crawler"
 	"github.com/mushtruk/webcrawler/queue"
+	"github.com/mushtruk/webcrawler/storage"
 )
 
 func main() {
 	q := queue.NewQueue[*crawler.CrawlURL]()
-	u, err := crawler.NewCrawlURL("https://medium.com/", 1)
+	u, err := crawler.NewCrawlURL("https://placeholder.com/", 2)
 
 	if err != nil {
 		fmt.Printf("Error parsing url, got %v", u)
@@ -18,9 +19,9 @@ func main() {
 
 	q.Add(u)
 
-	c := crawler.NewCrawler(q, 2, 5*time.Second)
+	s := storage.NewJSONStorage("placeholder.json", true)
 
-	c.Start(1)
+	c := crawler.NewCrawler(q, s, 2, 5*time.Second)
 
-	fmt.Print(c.Visited)
+	c.Start(10)
 }

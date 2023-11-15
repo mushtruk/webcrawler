@@ -2,7 +2,7 @@ package treesitemap
 
 type TreeNode struct {
 	URL      string
-	Content  string
+	Content  interface{}
 	Children []TreeNode
 }
 

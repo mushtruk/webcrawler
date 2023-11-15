@@ -59,7 +59,7 @@ func TestCrawlerStart(t *testing.T) {
 	startURL, _ := crawler.NewCrawlURL(server.URL, 3)
 	q := queue.NewQueue[*crawler.CrawlURL]()
 	q.Add(startURL)
-	crawler := crawler.NewCrawler(q, 3, timeout)
+	crawler := crawler.NewCrawler(q, nil, 3, timeout)
 
 	// Start the crawler
 	var wg sync.WaitGroup
@@ -91,7 +91,7 @@ func TestCrawlerDepthControl(t *testing.T) {
 	startURL, _ := crawler.NewCrawlURL(server.URL, 0)
 	q := queue.NewQueue[*crawler.CrawlURL]()
 	q.Add(startURL)
-	c := crawler.NewCrawler(q, maxDepth, timeout)
+	c := crawler.NewCrawler(q, nil, maxDepth, timeout)
 
 	c.Start(10)
 
@@ -122,7 +122,7 @@ func TestCrawlerHighVolumeURLs(t *testing.T) {
 	crawlUrl, _ := crawler.NewCrawlURL(server.URL, 0)
 	q.Add(crawlUrl)
 
-	c := crawler.NewCrawler(q, maxDepth, timeout)
+	c := crawler.NewCrawler(q, nil, maxDepth, timeout)
 
 	c.Start(10)
 
@@ -136,7 +136,7 @@ func TestURLResonseTimeout(t *testing.T) {
 	server := newSlowURLMockServer(timeout)
 	defer server.Close()
 
-	c := crawler.NewCrawler(queue.NewQueue[*crawler.CrawlURL](), 3, timeout)
+	c := crawler.NewCrawler(queue.NewQueue[*crawler.CrawlURL](), nil, 3, timeout)
 
 	crawlUrl, _ := crawler.NewCrawlURL(server.URL, 0)
 
@@ -159,7 +159,7 @@ func TestCrawlerCaching(t *testing.T) {
 	q := queue.NewQueue[*crawler.CrawlURL]()
 	q.Add(initialUrl)
 
-	c := crawler.NewCrawler(q, 2, timeout)
+	c := crawler.NewCrawler(q, nil, 2, timeout)
 
 	c.Queue.Add(initialUrl)
 	c.Start(1)
