@@ -8,38 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mushtruk/webcrawler/cache"
 	"github.com/mushtruk/webcrawler/parser"
-	"github.com/mushtruk/webcrawler/queue"
-	"github.com/mushtruk/webcrawler/storage"
-	"github.com/mushtruk/webcrawler/timeouttracker"
 	"github.com/mushtruk/webcrawler/treesitemap"
 )
-
-type Crawler struct {
-	Queue          *queue.Queue[*CrawlURL]
-	Visited        map[string]bool
-	MaxDepth       int
-	TimeOut        time.Duration
-	TimeoutTracker timeouttracker.TimeoutTracker
-	Cache          cache.Cache
-	Storage        storage.StorageHandler
-	RootNode       *treesitemap.TreeNode
-	mutex          sync.Mutex
-}
-
-func NewCrawler(q *queue.Queue[*CrawlURL], storage storage.StorageHandler, maxDepth int, timeout time.Duration) *Crawler {
-	return &Crawler{
-		Queue:          q,
-		Visited:        make(map[string]bool),
-		Cache:          *cache.NewCache(),
-		RootNode:       &treesitemap.TreeNode{},
-		TimeoutTracker: *timeouttracker.NewTimeoutTracker(),
-		MaxDepth:       maxDepth,
-		Storage:        storage,
-		TimeOut:        timeout,
-	}
-}
 
 func (c *Crawler) Start(workerCount int) {
 	var wg sync.WaitGroup

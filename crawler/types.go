@@ -2,6 +2,14 @@ package crawler
 
 import (
 	"net/url"
+	"sync"
+	"time"
+
+	"github.com/mushtruk/webcrawler/cache"
+	"github.com/mushtruk/webcrawler/queue"
+	"github.com/mushtruk/webcrawler/storage"
+	"github.com/mushtruk/webcrawler/timeouttracker"
+	"github.com/mushtruk/webcrawler/treesitemap"
 )
 
 // CrawlItem defines the interface for items that can be crawled.
@@ -15,6 +23,31 @@ type CrawlURL struct {
 	RawURL    string
 	ParsedURL *url.URL
 	Depth     int
+}
+
+type Crawler struct {
+	Queue          *queue.Queue[*CrawlURL]
+	Visited        map[string]bool
+	MaxDepth       int
+	TimeOut        time.Duration
+	TimeoutTracker timeouttracker.TimeoutTracker
+	Cache          cache.Cache
+	Storage        storage.StorageHandler
+	RootNode       *treesitemap.TreeNode
+	mutex          sync.Mutex
+}
+
+func NewCrawler(q *queue.Queue[*CrawlURL], storage storage.StorageHandler, maxDepth int, timeout time.Duration) *Crawler {
+	return &Crawler{
+		Queue:          q,
+		Visited:        make(map[string]bool),
+		Cache:          *cache.NewCache(),
+		RootNode:       &treesitemap.TreeNode{},
+		TimeoutTracker: *timeouttracker.NewTimeoutTracker(),
+		MaxDepth:       maxDepth,
+		Storage:        storage,
+		TimeOut:        timeout,
+	}
 }
 
 // NewCrawlURL creates a new CrawlURL with the given raw URL and depth.
